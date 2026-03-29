@@ -17,24 +17,34 @@ interface MessageListProps {
   roomId: string;
 }
 
-const groupMessagesByMinute = (messages: Message[]): Message[][] => {
+const groupMessages = (messages: Message[]): Message[][] => {
   if (!messages || messages.length === 0) {
     return [];
   }
 
-  const groups: { [key: string]: Message[] } = {};
+  const groups: Message[][] = [];
+  let currentGroup: Message[] = [messages[0]];
 
-  messages.forEach((message) => {
-    const messageDate = new Date(message.createdAt);
-    const minuteKey = startOfMinute(messageDate).toISOString();
+  for (let i = 1; i < messages.length; i++) {
+    const prev = messages[i - 1];
+    const curr = messages[i];
 
-    if (!groups[minuteKey]) {
-      groups[minuteKey] = [];
+    const prevMinute = startOfMinute(new Date(prev.createdAt)).toISOString();
+    const currMinute = startOfMinute(new Date(curr.createdAt)).toISOString();
+
+    const sameMinute = prevMinute === currMinute;
+    const sameSpeaker = prev.speaker === curr.speaker;
+
+    if (sameMinute && sameSpeaker) {
+      currentGroup.push(curr);
+    } else {
+      groups.push(currentGroup);
+      currentGroup = [curr];
     }
-    groups[minuteKey].push(message);
-  });
+  }
+  groups.push(currentGroup);
 
-  return Object.values(groups).filter(group => group.length > 0);
+  return groups;
 };
 
 export function MessageList({ roomId }: MessageListProps) {
@@ -45,7 +55,7 @@ export function MessageList({ roomId }: MessageListProps) {
   const { toast } = useToast();
   const scrollViewportRef = useRef<HTMLDivElement>(null);
 
-  const messageGroups = useMemo(() => groupMessagesByMinute(messages), [messages]);
+  const messageGroups = useMemo(() => groupMessages(messages), [messages]);
 
   const fetchMessages = useCallback(async () => {
     try {
@@ -87,7 +97,7 @@ export function MessageList({ roomId }: MessageListProps) {
         console.error('Failed to parse incoming message:', e);
       }
     };
-    
+
     eventSource.onerror = () => {
       console.error("SSE connection error. The connection will be closed.");
       toast({
@@ -102,12 +112,12 @@ export function MessageList({ roomId }: MessageListProps) {
       eventSource.close();
     };
   }, [roomId, toast, fetchMessages]);
-  
+
   useEffect(() => {
     const scrollToBottom = () => {
-        if (scrollViewportRef.current) {
-            scrollViewportRef.current.scrollTo({ top: scrollViewportRef.current.scrollHeight, behavior: 'smooth' });
-        }
+      if (scrollViewportRef.current) {
+        scrollViewportRef.current.scrollTo({ top: scrollViewportRef.current.scrollHeight, behavior: 'smooth' });
+      }
     };
     // A short delay ensures the DOM has updated before we try to scroll.
     const timeoutId = setTimeout(scrollToBottom, 100);
@@ -119,11 +129,11 @@ export function MessageList({ roomId }: MessageListProps) {
       return (
         <div className="space-y-4 p-1">
           {[...Array(5)].map((_, i) => (
-             <div key={i} className="flex items-start space-x-4">
-                <div className="space-y-2 flex-1">
-                    <Skeleton className="h-4 w-1/4" />
-                    <Skeleton className="h-8 w-3/4" />
-                </div>
+            <div key={i} className="flex items-start space-x-4">
+              <div className="space-y-2 flex-1">
+                <Skeleton className="h-4 w-1/4" />
+                <Skeleton className="h-8 w-3/4" />
+              </div>
             </div>
           ))}
         </div>
@@ -139,17 +149,17 @@ export function MessageList({ roomId }: MessageListProps) {
         </Alert>
       );
     }
-    
+
     if (messageGroups.length === 0) {
-        return (
-             <Alert>
-                <Terminal className="h-4 w-4" />
-                <AlertTitle>No messages yet!</AlertTitle>
-                <AlertDescription>
-                  This room is quiet for now. Messages from your transcription service will appear here in real-time.
-                </AlertDescription>
-            </Alert>
-        )
+      return (
+        <Alert>
+          <Terminal className="h-4 w-4" />
+          <AlertTitle>No messages yet!</AlertTitle>
+          <AlertDescription>
+            This room is quiet for now. Messages from your transcription service will appear here in real-time.
+          </AlertDescription>
+        </Alert>
+      )
     }
 
     return messageGroups.map((group, index) => (
@@ -161,17 +171,17 @@ export function MessageList({ roomId }: MessageListProps) {
     <Card className="w-full h-[70vh] flex flex-col shadow-lg">
       <CardHeader>
         <div className="flex justify-between items-center">
-            <CardTitle className="font-headline">
-                Room Transcription: <span className="font-mono text-accent">{roomId}</span>
-            </CardTitle>
-            <Button variant="outline" size="icon" onClick={handleRefresh} disabled={isPending}>
-                <RefreshCw className={`h-4 w-4 ${isPending ? 'animate-spin' : ''}`} />
-                <span className="sr-only">Refresh Messages</span>
-            </Button>
+          <CardTitle className="font-headline">
+            Room Transcription: <span className="font-mono text-accent">{roomId}</span>
+          </CardTitle>
+          <Button variant="outline" size="icon" onClick={handleRefresh} disabled={isPending}>
+            <RefreshCw className={`h-4 w-4 ${isPending ? 'animate-spin' : ''}`} />
+            <span className="sr-only">Refresh Messages</span>
+          </Button>
         </div>
       </CardHeader>
       <CardContent className="flex-grow min-h-0 flex flex-col">
-         <ScrollArea className="h-full pr-4 mt-4" viewportRef={scrollViewportRef}>
+        <ScrollArea className="h-full pr-4 mt-4" viewportRef={scrollViewportRef}>
           <div className="flex flex-col gap-4">
             {renderContent()}
           </div>

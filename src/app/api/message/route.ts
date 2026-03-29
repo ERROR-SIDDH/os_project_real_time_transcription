@@ -8,7 +8,7 @@ const DB_NAME = process.env.DB_NAME || 'echovault';
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { room_id, message } = body;
+    const { room_id, message, speaker, full_transcript } = body;
 
     if (!room_id || typeof room_id !== 'string' || !/^\d{6}$/.test(room_id)) {
       return NextResponse.json({ error: 'Invalid room_id provided. Must be a 6-digit string.' }, { status: 400 });
@@ -27,14 +27,16 @@ export async function POST(request: Request) {
 
     const newMessage: Omit<Message, '_id'> = {
       message: message,
+      speaker: speaker,
+      full_transcript: full_transcript,
       createdAt: new Date(),
     };
 
     const result = await collection.insertOne(newMessage);
-    
+
     const insertedMessage: Message = {
-        _id: result.insertedId,
-        ...newMessage,
+      _id: result.insertedId,
+      ...newMessage,
     };
 
     // Notify listeners for this room

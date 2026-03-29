@@ -1,5 +1,6 @@
 {
-  "apiurl": "https://echovault.malabarmatrix.site/api/message",
-  "room_id": "777777",
-  "whisper_model_size": "small"
+  "apiurl": "http://localhost:9002/api/message",
+  "room_id": "636963",
+  "whisper_model_size": "medium",
+  "input_device_index": 9
 }
