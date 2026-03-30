@@ -1,5 +1,8 @@
 import { Room } from '@/components/Room';
+import { BackendControl } from '@/components/BackendControl';
 import { Toaster } from "@/components/ui/toaster";
+import { DashboardTabs } from '@/components/DashboardTabs';
+import { SystemWatermark } from '@/components/SystemWatermark';
 import Image from 'next/image';
 
 export default function Home() {
@@ -23,16 +26,17 @@ export default function Home() {
           </div>
         </div>
       </header>
-      <main className="flex flex-col items-center justify-center bg-background text-foreground">
-        <div className="flex flex-col items-center justify-center w-full max-w-4xl mx-auto min-h-[calc(100vh-3.5rem)] p-4 sm:p-6 md:p-8">
-          <header className="text-center mb-12">
+      <main className="flex flex-col items-center bg-background text-foreground">
+        <div className="flex flex-col items-center w-full max-w-4xl mx-auto min-h-[calc(100vh-3.5rem)] p-4 sm:p-6 md:p-8">
+          <header className="text-center mb-8">
             <h1 className="text-4xl sm:text-5xl font-bold text-primary font-headline">EchoVault</h1>
             <p className="text-muted-foreground mt-2">Real-time room-based transcription service.</p>
           </header>
 
-          <div className="mb-12 w-full">
-            <Room />
+          <div className="w-full">
+            <DashboardTabs />
           </div>
+          <SystemWatermark />
         </div>
         <Toaster />
       </main>

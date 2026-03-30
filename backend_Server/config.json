@@ -2,5 +2,5 @@
   "apiurl": "http://localhost:9002/api/message",
   "room_id": "636963",
   "whisper_model_size": "medium",
-  "input_device_index": 9
+  "input_device_index": 4
 }

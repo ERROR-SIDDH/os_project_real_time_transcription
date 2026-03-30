@@ -50,6 +50,23 @@ class CONFIG:
 
 GLOBAL_TRANSCRIPT = []
 
+# External callback hooks (used by FastAPI server)
+_volume_callback = None
+_transcription_callback = None
+_status_callback = None
+
+def set_volume_callback(cb):
+    global _volume_callback
+    _volume_callback = cb
+
+def set_transcription_callback(cb):
+    global _transcription_callback
+    _transcription_callback = cb
+
+def set_status_callback(cb):
+    global _status_callback
+    _status_callback = cb
+
 def printf(text, color=Colors.ENDC):
     print('\r' + ' ' * 75 + '\r' + f"{color}{text}{Colors.ENDC}")
 
@@ -208,30 +225,38 @@ def identify_speaker(audio_segment):
             emb = CONFIG.speakermodel.encode_batch(audio_tensor.unsqueeze(0))
             emb = emb.squeeze(0).squeeze(0).numpy()
             
-        if getattr(CONFIG, 'enrolled', False) and len(CONFIG.speaker_centroids) >= 2:
-            sims = cosine_similarity([emb], CONFIG.speaker_centroids)[0]
-            speaker_idx = int(np.argmax(sims))
-            return CONFIG.speaker_names[speaker_idx]
-            
-        if len(CONFIG.speaker_centroids) == 0:
-            CONFIG.speaker_centroids.append(emb)
-            return "SPEAKER_00"
-        elif len(CONFIG.speaker_centroids) == 1:
-            sim = cosine_similarity([emb], [CONFIG.speaker_centroids[0]])[0][0]
-            if sim > 0.45: # Tuned for ECAPA-TDNN
-                # Move centroid slightly towards this new sample (exponential moving average)
-                CONFIG.speaker_centroids[0] = 0.9 * CONFIG.speaker_centroids[0] + 0.1 * emb
-                return "SPEAKER_00"
-            else:
-                CONFIG.speaker_centroids.append(emb)
-                return "SPEAKER_01"
-        else:
+        if getattr(CONFIG, 'enrolled', False):
+            # Enrolled Mode: We have at least mapped speakers.
             sims = cosine_similarity([emb], CONFIG.speaker_centroids)[0]
             speaker_idx = int(np.argmax(sims))
             if sims[speaker_idx] > 0.35:
-                # Update matched centroid
-                CONFIG.speaker_centroids[speaker_idx] = 0.9 * CONFIG.speaker_centroids[speaker_idx] + 0.1 * emb
-            return f"SPEAKER_{speaker_idx:02d}"
+                # Return mapped name if it exists, otherwise fallback to dynamic ID
+                if speaker_idx < len(CONFIG.speaker_names):
+                    return CONFIG.speaker_names[speaker_idx]
+                return f"SPEAKER_{speaker_idx:02d}"
+            else:
+                # Unrecognized speaker, add a new dynamic centroid
+                CONFIG.speaker_centroids.append(emb)
+                return f"SPEAKER_{len(CONFIG.speaker_centroids)-1:02d}"
+        else:
+            # Dynamic Clustering Mode (Legacy)
+            if len(CONFIG.speaker_centroids) == 0:
+                CONFIG.speaker_centroids.append(emb)
+                return "SPEAKER_00"
+            elif len(CONFIG.speaker_centroids) == 1:
+                sim = cosine_similarity([emb], [CONFIG.speaker_centroids[0]])[0][0]
+                if sim > 0.45:
+                    CONFIG.speaker_centroids[0] = 0.9 * CONFIG.speaker_centroids[0] + 0.1 * emb
+                    return "SPEAKER_00"
+                else:
+                    CONFIG.speaker_centroids.append(emb)
+                    return "SPEAKER_01"
+            else:
+                sims = cosine_similarity([emb], CONFIG.speaker_centroids)[0]
+                speaker_idx = int(np.argmax(sims))
+                if sims[speaker_idx] > 0.35:
+                    CONFIG.speaker_centroids[speaker_idx] = 0.9 * CONFIG.speaker_centroids[speaker_idx] + 0.1 * emb
+                return f"SPEAKER_{speaker_idx:02d}"
     except Exception as e:
         printf(f"Fingerprinting error: {e}", Colors.FAIL)
         return "SPEAKER_??"
@@ -248,16 +273,6 @@ apiq = queue.Queue(maxsize=50)
 stopevent = Event()
 threadslist = []
 
-def callback(indata, frames, time, status):
-    if status:
-        printf(f"Audio Status: {status}", Colors.WARNING)
-    audioq.put(indata.copy())
-    
-    volume_norm = np.linalg.norm(indata) * 10
-    bar = int(min(volume_norm, 50))
-    meter = '█' * bar + '-' * (50 - bar)
-    print('\r' + f"Vol: [{meter}] {volume_norm:.1f}   ", end='', flush=True)
-
 def audiobufferingthread():
     printf("AUDIO Buffering thread started", Colors.OKGREEN)
     buffer = np.zeros(0, dtype=np.float32)
@@ -268,11 +283,35 @@ def audiobufferingthread():
         else:
             deviceinfo = sd.query_devices(kind='input')
         printf(f"Using input device: {deviceinfo['name']}", Colors.OKCYAN)
+        native_sr = int(deviceinfo['default_samplerate'])
     except Exception as e:
         printf(f"Error accessing microphone: {e}", Colors.FAIL)
         return
+
+    def callback(indata, frames, time, status):
+        if status:
+            printf(f"Audio Status: {status}", Colors.WARNING)
+        
+        # Resample to 16000Hz if necessary
+        if native_sr != SAMPLERATE:
+            import librosa
+            resampled = librosa.resample(indata.flatten(), orig_sr=native_sr, target_sr=SAMPLERATE)
+            audioq.put(resampled.astype(np.float32))
+        else:
+            audioq.put(indata.flatten())
+        
+        volume_norm = np.linalg.norm(indata) * 10
+        bar = int(min(volume_norm, 50))
+        meter = '█' * bar + '-' * (50 - bar)
+        print('\r' + f"Vol: [{meter}] {volume_norm:.1f}   ", end='', flush=True)
+        if _volume_callback:
+            try:
+                _volume_callback(float(volume_norm))
+            except Exception:
+                pass
+
     try:
-        with sd.InputStream(device=device_idx, samplerate=SAMPLERATE, channels=1, callback=callback):
+        with sd.InputStream(device=device_idx, samplerate=native_sr, channels=1, callback=callback):
             printf("Recording... Press Ctrl+C to stop.", Colors.OKGREEN)
             while not stopevent.is_set():
                 try:
@@ -330,11 +369,17 @@ def processingthread():
                     printf(f"Transcribed: {formatted_text}", Colors.OKCYAN)
                     GLOBAL_TRANSCRIPT.append(formatted_text)
 
-                    apiq.put_nowait({
+                    payload = {
                         "room_id": CONFIG.room_id,
                         "message": text,
                         "speaker": speaker_label
-                    })
+                    }
+                    apiq.put_nowait(payload)
+                    if _transcription_callback:
+                        try:
+                            _transcription_callback(payload)
+                        except Exception:
+                            pass
             except Exception as e:
                 printf(f"Error processing chunk: {e}", Colors.FAIL)
         except queue.Empty:
