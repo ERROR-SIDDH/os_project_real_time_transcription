@@ -4,7 +4,9 @@ import React, { useState, useTransition, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { MessageList } from './MessageList';
-import { Loader2, ArrowRight } from 'lucide-react';
+import { AIChatPanel } from './AIChatPanel';
+import { useBackendStatus } from '@/hooks/useBackendStatus';
+import { Loader2, ArrowRight, Sparkles } from 'lucide-react';
 import {
   InputOTP,
   InputOTPGroup,
@@ -16,6 +18,12 @@ export function Room() {
   const [activeRoom, setActiveRoom] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [showAiPanel, setShowAiPanel] = useState(false);
+
+  // Grab backend url from localStorage
+  const backendUrl = typeof window !== 'undefined' ? localStorage.getItem('echovault_backend_url') || 'http://localhost:8000' : 'http://localhost:8000';
+
+  const { status, llmStatus } = useBackendStatus(backendUrl);
 
   useEffect(() => {
     if (activeRoom) {
@@ -40,20 +48,48 @@ export function Room() {
       setActiveRoom(roomIdInput);
     });
   };
-  
+
   const handleLeaveRoom = () => {
     setActiveRoom(null);
     setRoomIdInput('');
     setError(null);
+    setShowAiPanel(false);
   }
 
   if (activeRoom) {
     return (
-      <div>
-        <Button variant="outline" onClick={handleLeaveRoom} className="mb-4">
-          Leave Room
-        </Button>
-        <MessageList roomId={activeRoom} />
+      <div className="flex flex-col lg:flex-row gap-6 items-start h-[calc(100vh-140px)]">
+        {/* Main Transcript Area */}
+        <div className={`flex-1 flex flex-col h-full transition-all duration-300 ${showAiPanel ? 'lg:w-2/3' : 'w-full'}`}>
+          <div className="flex items-center justify-between mb-4">
+            <Button variant="outline" onClick={handleLeaveRoom}>
+              Leave Room
+            </Button>
+
+            <Button
+              variant={showAiPanel ? "secondary" : "default"}
+              onClick={() => setShowAiPanel(!showAiPanel)}
+              className="gap-2"
+            >
+              <Sparkles className="h-4 w-4" />
+              {showAiPanel ? 'Close AI Assistant' : 'AI Meeting Assistant'}
+            </Button>
+          </div>
+          <div className="flex-1 overflow-hidden">
+            <MessageList roomId={activeRoom} />
+          </div>
+        </div>
+
+        {/* AI Assistant Panel */}
+        {showAiPanel && (
+          <div className="w-full lg:w-1/3 h-full animate-in slide-in-from-right-8 fade-in duration-300">
+            <AIChatPanel
+              backendUrl={backendUrl}
+              llmStatus={llmStatus}
+              transcribing={status.is_recording}
+            />
+          </div>
+        )}
       </div>
     );
   }
@@ -69,8 +105,8 @@ export function Room() {
             <label htmlFor="roomId" className="text-sm font-medium text-muted-foreground">
               Enter 6-digit Room ID
             </label>
-            <InputOTP 
-              maxLength={6} 
+            <InputOTP
+              maxLength={6}
               value={roomIdInput}
               onChange={(value) => setRoomIdInput(value)}
               onComplete={handleJoinRoom}

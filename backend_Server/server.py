@@ -558,6 +558,135 @@ async def websocket_status(ws: WebSocket):
 
 
 # ──────────────────────────────────────────────
+# Chat & Summarization (Qwen Micro-LLM)
+# ──────────────────────────────────────────────
+class LLMManager:
+    model = None
+    tokenizer = None
+    history = []
+
+@app.post("/chat/summarize")
+async def chat_summarize():
+    import final
+    # Stop recording if running to free resources
+    if not final.stopevent.is_set():
+        final.stopevent.set()
+        for t in final.threadslist:
+            t.join()
+        final.threadslist.clear()
+
+    # Purge Whisper/ECAPA and free VRAM
+    CONFIG.whispermodel = None
+    import gc
+    gc.collect()
+    try:
+        torch.cuda.empty_cache()
+    except Exception:
+        pass
+
+    # Load Qwen LLM
+    try:
+        if LLMManager.model is None or LLMManager.tokenizer is None:
+            if _loop:
+                asyncio.run_coroutine_threadsafe(
+                    broadcast_ws("llm_status", {"status": "loading", "message": "Loading Qwen Micro-LLM..."}),
+                    _loop
+                )
+            from transformers import AutoModelForCausalLM, AutoTokenizer
+            model_id = "Qwen/Qwen2.5-0.5B-Instruct"
+            LLMManager.tokenizer = AutoTokenizer.from_pretrained(model_id)
+            LLMManager.model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=torch.float16, device_map="auto")
+    except Exception as e:
+        return {"success": False, "message": f"Failed to load LLM: {str(e)}"}
+
+    import requests
+    transcript_text = ""
+    # Attempt to fetch full history from Next.js MongoDB API to survive backend restarts
+    if getattr(CONFIG, 'apiurl', None) and getattr(CONFIG, 'room_id', None):
+        try:
+            # CONFIG.apiurl is usually "http://.../api/message"
+            base_url = CONFIG.apiurl.replace("/api/message", "")
+            get_url = f"{base_url}/api/rooms/{CONFIG.room_id}/messages"
+            
+            res = requests.get(get_url, timeout=5)
+            if res.ok:
+                msgs = res.json().get("messages", [])
+                formatted = [f"[{m.get('speaker', 'Unknown')}] {m.get('message', '')}" for m in msgs if m.get('speaker') != 'SUMMARY_REPORT']
+                transcript_text = "\n".join(formatted)
+        except Exception as e:
+            print(f"DEBUG: Failed to fetch from database API, using in-memory list. {e}")
+            
+    # Fallback to in-memory if MongoDB fetch failed or is empty
+    if not transcript_text:
+        transcript_text = "\n".join(final.GLOBAL_TRANSCRIPT)
+        
+    print(f"DEBUG: Generating summary for transcript of {len(transcript_text.splitlines())} lines.")
+    
+    if not transcript_text.strip():
+        transcript_text = "(No transcription recorded during this session)"
+        
+    system_prompt = "You are an AI meeting assistant. Answer the user's questions based ONLY on the following meeting transcript."
+    
+    LLMManager.history = [
+        {"role": "system", "content": system_prompt}
+    ]
+
+    initial_q = f"Here is the transcript of our meeting:\n\n{transcript_text}\n\nPlease generate a concise summary of this meeting."
+    LLMManager.history.append({"role": "user", "content": initial_q})
+
+    try:
+        if _loop:
+            asyncio.run_coroutine_threadsafe(
+                broadcast_ws("llm_status", {"status": "generating", "message": "Analyzing meeting and generating summary..."}),
+                _loop
+            )
+            
+        text = LLMManager.tokenizer.apply_chat_template(LLMManager.history, tokenize=False, add_generation_prompt=True)
+        inputs = LLMManager.tokenizer([text], return_tensors="pt").to(LLMManager.model.device)
+        outputs = LLMManager.model.generate(**inputs, max_new_tokens=512, temperature=0.7)
+        initial_summary = LLMManager.tokenizer.batch_decode(outputs[:, inputs.input_ids.shape[1]:], skip_special_tokens=True)[0]
+
+        LLMManager.history.append({"role": "assistant", "content": initial_summary})
+        
+        # Broadcast readiness
+        if _loop:
+            asyncio.run_coroutine_threadsafe(
+                broadcast_ws("llm_status", {"status": "ready", "message": "AI Assistant is ready"}),
+                _loop
+            )
+
+        return {"success": True, "type": "summary", "response": initial_summary}
+    except Exception as e:
+        return {"success": False, "message": f"Summarization failed: {str(e)}"}
+
+class ChatMessagePayload(BaseModel):
+    message: str
+
+@app.post("/chat/message")
+async def chat_message(payload: ChatMessagePayload):
+    if LLMManager.model is None or LLMManager.tokenizer is None:
+        return {"success": False, "message": "LLM is not loaded. Please generate a summary first."}
+
+    user_q = payload.message.strip()
+    if not user_q:
+        return {"success": False, "message": "Empty message."}
+
+    LLMManager.history.append({"role": "user", "content": user_q})
+
+    try:
+        text = LLMManager.tokenizer.apply_chat_template(LLMManager.history, tokenize=False, add_generation_prompt=True)
+        inputs = LLMManager.tokenizer([text], return_tensors="pt").to(LLMManager.model.device)
+        outputs = LLMManager.model.generate(**inputs, max_new_tokens=256, temperature=0.7)
+        response = LLMManager.tokenizer.batch_decode(outputs[:, inputs.input_ids.shape[1]:], skip_special_tokens=True)[0]
+        
+        LLMManager.history.append({"role": "assistant", "content": response})
+        return {"success": True, "type": "chat", "response": response}
+    except Exception as e:
+        # Rollback history on failure so user can try again
+        LLMManager.history.pop()
+        return {"success": False, "message": f"Chat failed: {str(e)}"}
+
+# ──────────────────────────────────────────────
 # GET /system — Hardware stats (CPU / RAM / GPU)
 # ──────────────────────────────────────────────
 

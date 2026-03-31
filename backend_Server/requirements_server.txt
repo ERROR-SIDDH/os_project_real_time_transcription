@@ -5,3 +5,5 @@ websockets
 psutil
 librosa
 soundfile
+transformers
+accelerate

@@ -47,6 +47,7 @@ export function useBackendStatus(backendUrl: string) {
     const [devices, setDevices] = useState<AudioDevice[]>([]);
     const [wsConnected, setWsConnected] = useState(false);
     const [testVolume, setTestVolume] = useState(0);
+    const [llmStatus, setLlmStatus] = useState<{ status: string, message: string } | null>(null);
     const wsRef = useRef<WebSocket | null>(null);
     const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -103,6 +104,8 @@ export function useBackendStatus(backendUrl: string) {
                     setStatus((prev) => ({ ...prev, volume: data.level }));
                 } else if (data.type === 'test_volume') {
                     setTestVolume(data.level);
+                } else if (data.type === 'llm_status') {
+                    setLlmStatus({ status: data.status, message: data.message });
                 }
             } catch {
                 // Ignore parse errors
@@ -232,6 +235,7 @@ export function useBackendStatus(backendUrl: string) {
         devices,
         wsConnected,
         testVolume,
+        llmStatus,
         fetchStatus,
         fetchDevices,
         updateConfig,
