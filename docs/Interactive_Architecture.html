@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI System Architecture | Live Monitor</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;500;700&family=JetBrains+Mono&display=swap"
+    rel="stylesheet">
+  <style>
+    :root {
+      --bg: #05070a;
+      --panel: #0d1117;
+      --accent: #58a6ff;
+      --success: #3fb950;
+      --warning: #f1e05a;
+      --border: #30363d;
+      --text: #c9d1d9;
+    }
+
+    * {
+      box-sizing: border-box;
+      transition: all 0.2s ease-in-out;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Inter', sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      height: 100vh;
+      justify-content: center;
+      overflow: hidden;
+    }
+
+    .dashboard {
+      width: 90%;
+      max-width: 1200px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 40px;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
+      position: relative;
+    }
+
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 40px;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 20px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 1.2rem;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      font-weight: 700;
+      color: var(--accent);
+    }
+
+    .status {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.8rem;
+    }
+
+    .pulse {
+      width: 8px;
+      height: 8px;
+      background: var(--success);
+      border-radius: 50%;
+      box-shadow: 0 0 10px var(--success);
+      animation: pulse_ani 2s infinite;
+    }
+
+    @keyframes pulse_ani {
+      0% {
+        opacity: 1;
+      }
+
+      50% {
+        opacity: 0.4;
+      }
+
+      100% {
+        opacity: 1;
+      }
+    }
+
+    svg {
+      width: 100%;
+      height: auto;
+      display: block;
+      filter: drop-shadow(0 0 10px rgba(88, 166, 255, 0.15));
+      cursor: crosshair;
+    }
+
+    .node circle {
+      fill: var(--panel);
+      stroke: var(--border);
+      stroke-width: 2;
+      cursor: pointer;
+    }
+
+    .node:hover circle {
+      stroke: var(--accent);
+      r: 24;
+      filter: drop-shadow(0 0 15px var(--accent));
+    }
+
+    .node:hover .node-label {
+      fill: #fff;
+      transform: translateY(-5px);
+    }
+
+    .node-label {
+      font-size: 14px;
+      fill: var(--text);
+      font-weight: 700;
+      text-anchor: middle;
+      pointer-events: none;
+    }
+
+    .node-sub {
+      font-size: 10px;
+      fill: #8b949e;
+      text-anchor: middle;
+      font-family: 'JetBrains Mono', monospace;
+      pointer-events: none;
+    }
+
+    /* Flowing Path Animations */
+    .flow-path {
+      fill: none;
+      stroke: var(--border);
+      stroke-width: 2;
+      stroke-linecap: round;
+    }
+
+    .flow-line {
+      fill: none;
+      stroke: var(--accent);
+      stroke-width: 2;
+      stroke-dasharray: 10, 30;
+      animation: flow 1s linear infinite;
+    }
+
+    .flow-fast {
+      stroke: var(--success);
+      animation: flow 0.5s linear infinite;
+    }
+
+    @keyframes flow {
+      to {
+        stroke-dashoffset: -40;
+      }
+    }
+
+    /* Floating Tooltip */
+    #tooltip {
+      position: fixed;
+      background: rgba(22, 27, 34, 0.95);
+      border: 1px solid var(--accent);
+      border-radius: 8px;
+      padding: 12px 18px;
+      pointer-events: none;
+      opacity: 0;
+      z-index: 100;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+      backdrop-filter: blur(10px);
+      min-width: 220px;
+    }
+
+    #tooltip h4 {
+      margin: 0 0 8px;
+      font-size: 0.9rem;
+      color: var(--accent);
+      text-transform: uppercase;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    #tooltip div {
+      font-size: 0.8rem;
+      margin-bottom: 4px;
+      color: #8b949e;
+    }
+
+    #tooltip span {
+      color: var(--text);
+      font-weight: 500;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .specs-panel {
+      background: rgba(13, 17, 23, 0.4);
+      padding: 20px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      width: 280px;
+      box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.2);
+      backdrop-filter: blur(8px);
+    }
+
+    .specs-panel h2 {
+      margin: 0 0 15px;
+      font-size: 0.8rem;
+      color: var(--accent);
+      text-transform: uppercase;
+      font-weight: 700;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 8px;
+      letter-spacing: 1px;
+    }
+
+    .spec-item {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 8px;
+      font-size: 0.75rem;
+    }
+
+    .spec-val {
+      font-family: 'JetBrains Mono', monospace;
+      color: var(--success);
+    }
+
+    .main-view {
+      display: flex;
+      gap: 30px;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+
+    footer {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 20px;
+    }
+
+    .phase-card {
+      background: #161b22;
+      padding: 15px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+    }
+
+    .phase-card h3 {
+      margin: 0 0 5px;
+      font-size: 0.75rem;
+      color: #8b949e;
+      text-transform: uppercase;
+    }
+
+    .phase-card p {
+      margin: 0;
+      font-size: 0.85rem;
+    }
+  </style>
+</head>
+
+<body>
+
+  <div id="tooltip"></div>
+
+  <div class="dashboard">
+    <header>
+      <h1>System Live-Flow Monitor</h1>
+      <div class="status">
+        <div class="pulse"></div> ENGINE_ONLINE | RTC_ACTIVE
+      </div>
+    </header>
+
+    <div class="main-view">
+      <svg viewBox="0 0 1000 300" style="flex: 1;">
+        <!-- Flow Paths -->
+        <path class="flow-path" d="M100 150 L250 150" />
+        <path class="flow-path" d="M250 150 L450 150" />
+        <path class="flow-path" d="M450 150 C 550 150, 550 80, 650 80" />
+        <path class="flow-path" d="M450 150 C 550 150, 550 220, 650 220" />
+        <path class="flow-path" d="M650 80 L800 150" />
+        <path class="flow-path" d="M650 220 L800 150" />
+        <path class="flow-path" d="M800 150 L950 150" />
+
+        <!-- Animated Flows -->
+        <path class="flow-line" d="M100 150 L250 150" />
+        <path class="flow-line" d="M250 150 L450 150" />
+        <path class="flow-line flow-fast" d="M450 150 C 550 150, 550 80, 650 80" />
+        <path class="flow-line flow-fast" d="M450 150 C 550 150, 550 220, 650 220" />
+        <path class="flow-line" d="M650 80 L800 150" />
+        <path class="flow-line" d="M650 220 L800 150" />
+        <path class="flow-line flow-fast" d="M800 150 L950 150" />
+
+        <!-- Interactive Nodes -->
+        <g class="node"
+          onmouseover="showTip(this, 'Microphone','Hardware','PCM 16kHz Stream','Analog to Digital Audio Capture')"
+          onmouseout="hideTip()">
+          <circle cx="100" cy="150" r="20" />
+          <text x="100" y="195" class="node-label">Mic</text>
+          <text x="100" y="212" class="node-sub">16kHz</text>
+        </g>
+
+        <g class="node"
+          onmouseover="showTip(this, 'Audio Buffer','Python Thread','Queue-based Memory Segmenting','Slices stream into 3sec blocks for AI consumption')"
+          onmouseout="hideTip()">
+          <circle cx="250" cy="150" r="20" />
+          <text x="250" y="195" class="node-label">Buffer</text>
+          <text x="250" y="212" class="node-sub">ThreadSafe</text>
+        </g>
+
+        <g class="node"
+          onmouseover="showTip(this, 'Core Logic','Python 3.12','Asynchronous Aligner','Fuses Whisper text with ECAPA-TDNN biometric results')"
+          onmouseout="hideTip()">
+          <circle cx="450" cy="150" r="20" />
+          <text x="450" y="195" class="node-label">Engine</text>
+          <text x="450" y="212" class="node-sub">Orchestrator</text>
+        </g>
+
+        <g class="node"
+          onmouseover="showTip(this, 'Whisper AI','C++ / PyTorch','Speech-To-Text STT','Transcribes raw audio frequencies into text with timestamps')"
+          onmouseout="hideTip()">
+          <circle cx="650" cy="80" r="20" />
+          <text x="650" y="55" class="node-label">Whisper</text>
+          <text x="650" y="40" class="node-sub">Transcription</text>
+        </g>
+
+        <g class="node"
+          onmouseover="showTip(this, 'ECAPA-TDNN','PyTorch','Biometric Diarization','Calculates 192-dim vector embeddings of voices to match names')"
+          onmouseout="hideTip()">
+          <circle cx="650" cy="220" r="20" />
+          <text x="650" y="265" class="node-label">Biometrics</text>
+          <text x="650" y="280" class="node-sub">Identity</text>
+        </g>
+
+        <g class="node"
+          onmouseover="showTip(this, 'Qwen LLM','Transformers','Language Model','Offline Causual-LLM used for post-meeting session summaries')"
+          onmouseout="hideTip()">
+          <circle cx="800" cy="150" r="20" />
+          <text x="800" y="195" class="node-label">Qwen AI</text>
+          <text x="800" y="212" class="node-sub">Summary</text>
+        </g>
+
+        <g class="node"
+          onmouseover="showTip(this, 'Webhook','Service Endpoint','Next.js POST Hook','Final Destination for synced text and summary data display')"
+          onmouseout="hideTip()">
+          <circle cx="950" cy="150" r="20" stroke="var(--accent)" stroke-width="3" />
+          <text x="950" y="195" class="node-label">Frontend</text>
+          <text x="950" y="212" class="node-sub">API Sync</text>
+        </g>
+      </svg>
+
+      <div class="specs-panel">
+        <h2>Machine Specs</h2>
+        <div class="spec-item">CPU: <span class="spec-val">4+ Cores</span></div>
+        <div class="spec-item">GPU VRAM: <span class="spec-val">6GB NVIDIA</span></div>
+        <div class="spec-item">CUDA: <span class="spec-val">12.1+</span></div>
+        <div class="spec-item">RAM: <span class="spec-val">16GB DDR4</span></div>
+
+        <h2 style="margin-top:20px;">AI Model Stats</h2>
+        <div class="spec-item">Whisper: <span class="spec-val">460 MB</span></div>
+        <div class="spec-item">Qwen LLM: <span class="spec-val">1.1 GB</span></div>
+        <div class="spec-item">ECAPA-TDNN: <span class="spec-val">80 MB</span></div>
+      </div>
+    </div>
+
+    <footer>
+      <div class="phase-card">
+        <h3>Enrollment</h3>
+        <p>Voice Fingerprints locked as Ground Truth.</p>
+      </div>
+      <div class="phase-card">
+        <h3>Capture</h3>
+        <p>16kHz stream sliced into micro-blocks.</p>
+      </div>
+      <div class="phase-card">
+        <h3>Processing</h3>
+        <p>Dual-model inference (Who + What).</p>
+      </div>
+      <div class="phase-card">
+        <h3>Summary</h3>
+        <p>Final LLM report synced to frontend.</p>
+      </div>
+    </footer>
+  </div>
+
+  <script>
+    const tip = document.getElementById('tooltip');
+
+    function showTip(node, title, lang, logic, role) {
+      tip.innerHTML = `
+            <h4>${title}</h4>
+            <div>Lang: <span>${lang}</span></div>
+            <div>Logic: <span>${logic}</span></div>
+            <div>Role: <span>${role}</span></div>
+        `;
+      tip.style.opacity = '1';
+    }
+
+    function hideTip() {
+      tip.style.opacity = '0';
+    }
+
+    document.addEventListener('mousemove', (e) => {
+      tip.style.left = (e.clientX + 15) + 'px';
+      tip.style.top = (e.clientY + 15) + 'px';
+    });
+  </script>
+
+</body>
+
+</html>
