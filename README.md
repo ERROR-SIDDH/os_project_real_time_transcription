@@ -45,7 +45,7 @@ To understand how the local AI processing pipeline interacts with the Next.js co
 
 [![System Architecture Preview](./docs/img/Screenshot%20from%202026-03-31%2015-11-29.png)](./backend_Server/Interactive_Architecture.html)
 
-👉 **[Click here to open the Interactive Architecture Diagram](./backend_Server/Interactive_Architecture.html)** *(Clone the repository and open this file in any web browser to view).*
+👉 **[Click here to open the Interactive Architecture Diagram](https://error-siddh.github.io/os_project_real_time_transcription/Interactive_Architecture.html)** *(Clone the repository and open this file in any web browser to view).*
 
 ## Tech Stack
 
